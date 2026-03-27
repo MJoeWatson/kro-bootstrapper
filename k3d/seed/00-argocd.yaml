@@ -18,24 +18,3 @@ spec:
     configs:
       params:
         server.insecure: true
-    extraObjects:
-      - apiVersion: argoproj.io/v1alpha1
-        kind: Application
-        metadata:
-          name: root
-          namespace: argocd
-        spec:
-          project: default
-          source:
-            repoURL: https://github.com/MJoeWatson/kro-bootstrapper.git
-            targetRevision: main
-            path: clusters/local/root
-          destination:
-            server: https://kubernetes.default.svc
-            namespace: argocd
-          syncPolicy:
-            automated:
-              prune: true
-              selfHeal: true
-            syncOptions:
-              - CreateNamespace=true

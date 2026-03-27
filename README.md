@@ -6,7 +6,7 @@ The intended flow is:
 
 1. K3s auto-deploys one Argo CD `HelmChart`
 2. The chart installs Argo CD and its CRDs
-3. The chart renders one initial `Application` through `extraObjects`
+3. K3s auto-deploys one initial `Application` manifest after the CRD exists
 4. That root `Application` syncs the repository app tree
 5. Argo CD takes over the rest of the platform
 
@@ -27,7 +27,7 @@ For local testing, mount [k3d/seed](/Users/mwatson/Documents/projects/personal/k
 The local seed is intentionally small:
 
 1. install Argo CD through a K3s `HelmChart`
-2. create the initial `root` application through `extraObjects`
+2. auto-apply the initial `root` `Application` manifest from the same K3s manifests directory
 3. let Argo CD sync [clusters/local/root/platform-root.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/platform-root.yaml)
 
 Example:
@@ -40,5 +40,5 @@ kubectl get applications -n argocd
 ## Notes
 
 - The bootstrap `HelmChart` is the only local day-0 seed.
-- The first `Application` is implementation-specific and lives in the chart `valuesContent` through `extraObjects`.
+- The first `Application` is implementation-specific and lives in [k3d/seed/10-root-application.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/k3d/seed/10-root-application.yaml).
 - The current app tree only installs `platform-root`. If you want Argo CD to manage itself later, add a dedicated Argo app to [clusters/local/root](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root) and retire the bootstrap `HelmChart` explicitly.

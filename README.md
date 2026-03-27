@@ -1,8 +1,8 @@
 # Argo CD Bootstrapper
 
-This repository bootstraps Argo CD directly through K3s/K3d auto-deployed manifests.
+This repository is evaluating Argo CD bootstrap patterns for local `k3d` and eventually other Kubernetes clusters.
 
-The intended flow is:
+The current prototype flow is:
 
 1. K3s auto-deploys one Argo CD `HelmChart`
 2. The chart installs Argo CD and its CRDs
@@ -39,6 +39,13 @@ kubectl get applications -n argocd
 
 ## Notes
 
-- The bootstrap `HelmChart` is the only local day-0 seed.
+- The bootstrap `HelmChart` is the only local day-0 seed in the current prototype.
 - The first `Application` is implementation-specific and is embedded in [k3d/seed/00-argocd.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/k3d/seed/00-argocd.yaml) through `extraObjects`.
 - The current app tree only installs `platform-root`. If you want Argo CD to manage itself later, add a dedicated Argo app to [clusters/local/root](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root) and retire the bootstrap `HelmChart` explicitly.
+
+## Decision Record
+
+- The direct Argo-only bootstrap path was evaluated, including a Helm `post-install` hook for the root `Application`.
+- That prototype still hit a startup race where the root application reconciled before `argocd-repo-server` was reliably ready.
+- The current direction is therefore to use `kro` for bootstrap ordering rather than grow a wait script.
+- See [ADR 0001](/Users/mwatson/Documents/projects/personal/k8skro/repo/docs/decisions/0001-use-kro-for-bootstrap-ordering.md).

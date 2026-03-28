@@ -92,6 +92,7 @@ kubectl get applications -n argocd
 - External Secrets Operator is bootstrap-installable through `bootstrap.externalSecrets.*`.
 - Local `k3d` bootstrap enables `bootstrap.externalSecrets.localTest.enabled=true`, which creates a dummy secret source and materializes `Secret/argocd-sso-secret` in the `argocd` namespace through ESO's Kubernetes provider.
 - That local path validates secret delivery for future SSO work, but a real local OIDC provider is still needed to exercise the full login flow.
+- The bootstrap step installs ESO CRDs; the Git-managed [external-secrets.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/external-secrets.yaml) app keeps `installCRDs=false` so Argo takes over the controller without fighting preinstalled CRDs.
 - Argo readiness checks are configurable through `bootstrap.argocd.wait.*` and can be disabled entirely for externally provided Argo installations.
 - The root app tree now includes [argocd.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/argocd.yaml), so Argo CD hands over to a Git-defined self-management app after bootstrap.
 - The root app tree also includes [external-secrets.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/external-secrets.yaml), so External Secrets Operator is also handed over to Git.

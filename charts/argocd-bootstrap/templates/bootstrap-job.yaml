@@ -51,9 +51,13 @@ spec:
               echo "Skipping Argo CD installation and waiting for an existing Argo CD deployment"
 {{- end }}
 
-              kubectl rollout status deployment/argocd-repo-server -n {{ .Values.bootstrap.argocd.namespace }} --timeout={{ .Values.bootstrap.job.timeout }}
-              kubectl rollout status deployment/argocd-server -n {{ .Values.bootstrap.argocd.namespace }} --timeout={{ .Values.bootstrap.job.timeout }}
-              kubectl rollout status statefulset/argocd-application-controller -n {{ .Values.bootstrap.argocd.namespace }} --timeout={{ .Values.bootstrap.job.timeout }}
+{{- if .Values.bootstrap.argocd.wait.enabled }}
+              kubectl rollout status deployment/{{ .Values.bootstrap.argocd.wait.repoServerDeployment }} -n {{ .Values.bootstrap.argocd.namespace }} --timeout={{ .Values.bootstrap.job.timeout }}
+              kubectl rollout status deployment/{{ .Values.bootstrap.argocd.wait.serverDeployment }} -n {{ .Values.bootstrap.argocd.namespace }} --timeout={{ .Values.bootstrap.job.timeout }}
+              kubectl rollout status statefulset/{{ .Values.bootstrap.argocd.wait.applicationControllerStatefulSet }} -n {{ .Values.bootstrap.argocd.namespace }} --timeout={{ .Values.bootstrap.job.timeout }}
+{{- else }}
+              echo "Skipping Argo CD readiness checks"
+{{- end }}
 
               kubectl apply -f /manifests
 

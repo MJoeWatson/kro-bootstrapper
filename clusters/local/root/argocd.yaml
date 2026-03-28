@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  project: default
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-cd
+    targetRevision: 9.2.4
+    helm:
+      values: |
+        crds:
+          install: true
+        global:
+          domain: argocd.localtest.me
+        configs:
+          params:
+            server.insecure: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -15,6 +15,11 @@ bootstrap:
     repoURL: https://argoproj.github.io/argo-helm
     chart: argo-cd
     version: 9.2.4
+    wait:
+      enabled: true
+      repoServerDeployment: argocd-repo-server
+      serverDeployment: argocd-server
+      applicationControllerStatefulSet: argocd-application-controller
     values: |
       crds:
         install: true

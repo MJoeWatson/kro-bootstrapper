@@ -8,9 +8,10 @@ The current flow is:
 2. the bootstrap chart runs a one-shot `post-install` job
 3. that job either installs Argo CD from inside the cluster or waits for an existing Argo CD installation
 4. the job waits for Argo CD readiness
-5. the job applies bootstrap Argo CD resources such as the root `Application`
-6. the job writes a sentinel `ConfigMap` so bootstrap is not rerun accidentally
-7. Argo CD takes over steady-state ownership from Git
+5. the job optionally installs External Secrets Operator and, for local `k3d`, can emulate an external secret source
+6. the job applies bootstrap Argo CD resources such as the root `Application`
+7. the job writes a sentinel `ConfigMap` so bootstrap is not rerun accidentally
+8. Argo CD takes over steady-state ownership from Git
 
 ## Repository Layout
 
@@ -50,6 +51,16 @@ helm upgrade --install argocd-bootstrap ./charts/argocd-bootstrap \
   --set bootstrap.argocd.wait.enabled=false
 ```
 
+If you also want to skip External Secrets Operator installation because the platform already provides it:
+
+```bash
+helm upgrade --install argocd-bootstrap ./charts/argocd-bootstrap \
+  -n kube-system \
+  --set bootstrap.argocd.install=false \
+  --set bootstrap.argocd.wait.enabled=false \
+  --set bootstrap.externalSecrets.install=false
+```
+
 ## k3d Local Flow
 
 For local testing, mount [k3d/seed](/Users/mwatson/Documents/projects/personal/k8skro/repo/k3d/seed) into `/var/lib/rancher/k3s/server/manifests` and [k3d/static/bootstrap](/Users/mwatson/Documents/projects/personal/k8skro/repo/k3d/static/bootstrap) into `/var/lib/rancher/k3s/server/static/bootstrap`.
@@ -58,8 +69,8 @@ The local seed is intentionally tiny:
 
 1. K3s auto-deploys one `HelmChart` custom resource
 2. that `HelmChart` installs the packaged bootstrap chart from the local K3s static server
-3. the bootstrap chart job installs Argo CD and applies the bootstrap manifests
-4. Argo CD syncs [clusters/local/root/platform-root.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/platform-root.yaml)
+3. the bootstrap chart job installs Argo CD, installs External Secrets Operator, and creates a local test secret path for `argocd-sso-secret`
+4. Argo CD syncs [clusters/local/root/external-secrets.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/external-secrets.yaml), [clusters/local/root/argocd.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/argocd.yaml), and [clusters/local/root/platform-root.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/platform-root.yaml)
 
 Example:
 
@@ -78,8 +89,12 @@ kubectl get applications -n argocd
 - The chart is designed so an external tool owns only the bootstrap mechanism, not the Argo CD release after handoff.
 - The main external sources are configurable through values:
   `bootstrap.job.image`, `bootstrap.argocd.repoURL`, `bootstrap.argocd.chart`, `bootstrap.argocd.version`, and `bootstrap.rootApplication.repoURL`.
+- External Secrets Operator is bootstrap-installable through `bootstrap.externalSecrets.*`.
+- Local `k3d` bootstrap enables `bootstrap.externalSecrets.localTest.enabled=true`, which creates a dummy secret source and materializes `Secret/argocd-sso-secret` in the `argocd` namespace through ESO's Kubernetes provider.
+- That local path validates secret delivery for future SSO work, but a real local OIDC provider is still needed to exercise the full login flow.
 - Argo readiness checks are configurable through `bootstrap.argocd.wait.*` and can be disabled entirely for externally provided Argo installations.
 - The root app tree now includes [argocd.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/argocd.yaml), so Argo CD hands over to a Git-defined self-management app after bootstrap.
+- The root app tree also includes [external-secrets.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/external-secrets.yaml), so External Secrets Operator is also handed over to Git.
 - The same root app tree still installs [platform-root.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/platform-root.yaml).
 
 ## Decision Record

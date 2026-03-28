@@ -17,6 +17,9 @@ spec:
         - name: argocd-values
           configMap:
             name: {{ include "argocd-bootstrap.fullname" . }}-argocd-values
+        - name: external-secrets-values
+          configMap:
+            name: {{ include "argocd-bootstrap.fullname" . }}-external-secrets-values
         - name: bootstrap-manifests
           configMap:
             name: {{ include "argocd-bootstrap.fullname" . }}-manifests
@@ -26,6 +29,8 @@ spec:
           volumeMounts:
             - name: argocd-values
               mountPath: /config
+            - name: external-secrets-values
+              mountPath: /eso-config
             - name: bootstrap-manifests
               mountPath: /manifests
           command:
@@ -59,6 +64,132 @@ spec:
               echo "Skipping Argo CD readiness checks"
 {{- end }}
 
+{{- if .Values.bootstrap.externalSecrets.install }}
+              helm upgrade --install {{ .Values.bootstrap.externalSecrets.releaseName }} {{ .Values.bootstrap.externalSecrets.chart }} \
+                --repo {{ .Values.bootstrap.externalSecrets.repoURL }} \
+                --namespace {{ .Values.bootstrap.externalSecrets.namespace }} \
+                --create-namespace \
+                --version {{ .Values.bootstrap.externalSecrets.version }} \
+                --wait \
+                --timeout {{ .Values.bootstrap.job.timeout }} \
+                --values /eso-config/external-secrets-values.yaml
+{{- else }}
+              echo "Skipping External Secrets Operator installation"
+{{- end }}
+
+{{- if .Values.bootstrap.externalSecrets.wait.enabled }}
+              kubectl rollout status deployment/{{ .Values.bootstrap.externalSecrets.wait.deployment }} -n {{ .Values.bootstrap.externalSecrets.namespace }} --timeout={{ .Values.bootstrap.job.timeout }}
+{{- else }}
+              echo "Skipping External Secrets Operator readiness checks"
+{{- end }}
+
+{{- if .Values.bootstrap.externalSecrets.localTest.enabled }}
+              kubectl apply -f - <<'LOCAL_TEST'
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: {{ .Values.bootstrap.externalSecrets.localTest.sourceNamespace }}
+              ---
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                name: {{ .Values.bootstrap.externalSecrets.localTest.sourceSecretName }}
+                namespace: {{ .Values.bootstrap.externalSecrets.localTest.sourceNamespace }}
+              type: Opaque
+              stringData:
+                {{ .Values.bootstrap.externalSecrets.localTest.sourceSecretKey }}: local-argocd-sso-client-secret
+              ---
+              apiVersion: rbac.authorization.k8s.io/v1
+              kind: Role
+              metadata:
+                name: eso-store-role
+                namespace: {{ .Values.bootstrap.externalSecrets.localTest.sourceNamespace }}
+              rules:
+                - apiGroups: [""]
+                  resources:
+                    - secrets
+                  verbs:
+                    - get
+                    - list
+                    - watch
+                - apiGroups:
+                    - authorization.k8s.io
+                  resources:
+                    - selfsubjectrulesreviews
+                  verbs:
+                    - create
+              ---
+              apiVersion: v1
+              kind: ServiceAccount
+              metadata:
+                name: eso-service-account
+                namespace: {{ .Values.bootstrap.externalSecrets.localTest.sourceNamespace }}
+              ---
+              apiVersion: rbac.authorization.k8s.io/v1
+              kind: RoleBinding
+              metadata:
+                name: bind-eso-store-role
+                namespace: {{ .Values.bootstrap.externalSecrets.localTest.sourceNamespace }}
+              subjects:
+                - kind: ServiceAccount
+                  name: eso-service-account
+                  namespace: {{ .Values.bootstrap.externalSecrets.localTest.sourceNamespace }}
+              roleRef:
+                kind: Role
+                name: eso-store-role
+                apiGroup: rbac.authorization.k8s.io
+              LOCAL_TEST
+
+              eso_token="$(kubectl create token eso-service-account -n {{ .Values.bootstrap.externalSecrets.localTest.sourceNamespace }})"
+              kubectl create secret generic {{ .Values.bootstrap.externalSecrets.localTest.tokenSecretName }} \
+                -n {{ .Values.bootstrap.argocd.namespace }} \
+                --from-literal=token="$eso_token" \
+                --dry-run=client -o yaml | kubectl apply -f -
+
+              kubectl apply -f - <<'LOCAL_STORE'
+              apiVersion: external-secrets.io/v1
+              kind: SecretStore
+              metadata:
+                name: {{ .Values.bootstrap.externalSecrets.localTest.storeName }}
+                namespace: {{ .Values.bootstrap.argocd.namespace }}
+              spec:
+                provider:
+                  kubernetes:
+                    remoteNamespace: {{ .Values.bootstrap.externalSecrets.localTest.sourceNamespace }}
+                    server:
+                      caProvider:
+                        type: ConfigMap
+                        name: kube-root-ca.crt
+                        key: ca.crt
+                    auth:
+                      token:
+                        bearerToken:
+                          name: {{ .Values.bootstrap.externalSecrets.localTest.tokenSecretName }}
+                          key: token
+              ---
+              apiVersion: external-secrets.io/v1
+              kind: ExternalSecret
+              metadata:
+                name: argocd-sso-secret
+                namespace: {{ .Values.bootstrap.argocd.namespace }}
+              spec:
+                refreshInterval: 1h
+                secretStoreRef:
+                  kind: SecretStore
+                  name: {{ .Values.bootstrap.externalSecrets.localTest.storeName }}
+                target:
+                  name: {{ .Values.bootstrap.externalSecrets.localTest.targetSecretName }}
+                  creationPolicy: Owner
+                data:
+                  - secretKey: {{ .Values.bootstrap.externalSecrets.localTest.sourceSecretKey }}
+                    remoteRef:
+                      key: {{ .Values.bootstrap.externalSecrets.localTest.sourceSecretName }}
+                      property: {{ .Values.bootstrap.externalSecrets.localTest.sourceSecretKey }}
+              LOCAL_STORE
+
+              kubectl wait --for=condition=Ready externalsecret/argocd-sso-secret -n {{ .Values.bootstrap.argocd.namespace }} --timeout={{ .Values.bootstrap.job.timeout }} || true
+{{- end }}
+
               kubectl apply -f /manifests
 
 {{- if and .Values.bootstrap.rootApplication.enabled .Values.bootstrap.rootApplication.waitForHealthy }}
@@ -85,6 +216,9 @@ spec:
                 --dry-run=client -o yaml | kubectl apply -f -
 
               kubectl delete configmap {{ include "argocd-bootstrap.fullname" . }}-argocd-values \
+                -n {{ .Release.Namespace }} \
+                --ignore-not-found=true || true
+              kubectl delete configmap {{ include "argocd-bootstrap.fullname" . }}-external-secrets-values \
                 -n {{ .Release.Namespace }} \
                 --ignore-not-found=true || true
               kubectl delete configmap {{ include "argocd-bootstrap.fullname" . }}-manifests \

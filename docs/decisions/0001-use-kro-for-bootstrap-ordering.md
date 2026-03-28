@@ -42,8 +42,9 @@ Use `kro` to model and enforce bootstrap ordering after the seed install, instea
 The intended shape is:
 
 1. seed the cluster with the minimal controllers required for bootstrap
-2. use `kro` to express readiness and ordering for Argo CD bootstrap resources
-3. create Argo CD resources only after Argo CD is ready to consume them
+2. use one thin seed job to install `kro` and apply the bootstrap artifacts after the required APIs exist
+3. use `kro` to express readiness and ordering for Argo CD bootstrap resources
+4. create Argo CD resources only after Argo CD is ready to consume them
 
 ## Why Not A Script
 
@@ -63,6 +64,13 @@ In contrast, `kro` gives:
 - a reusable bootstrap API
 - observable in-cluster status
 - a better path as bootstrap scope grows
+
+The remaining seed job is intentionally small and mechanical. It exists only because:
+
+- `kro` must be installed before `ResourceGraphDefinition` resources can be served
+- the Argo CD `Application` CRD must exist before the bootstrap RGD can reference `Application`
+
+That seed job is not the bootstrap engine. It only gets the cluster to the point where `kro` can take over the ordering problem.
 
 ## Consequences
 

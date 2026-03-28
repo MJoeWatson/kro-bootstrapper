@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bootstrap-artifacts
+  namespace: kube-system
+data:
+  10-bootstrap-rgd.yaml: |
+    apiVersion: kro.run/v1alpha1
+    kind: ResourceGraphDefinition
+    metadata:
+      name: argocd-bootstrap
+    spec:
+      schema:
+        apiVersion: v1alpha1
+        kind: ArgoBootstrap
+        group: platform.bootstrap.io
+        spec:
+          applicationName: string | default="root"
+          applicationNamespace: string | default="argocd"
+          repoURL: string | required=true
+          targetRevision: string | default="main"
+          path: string | required=true
+          project: string | default="default"
+          destinationServer: string | default="https://kubernetes.default.svc"
+          destinationNamespace: string | required=true
+        status:
+          applicationName: ${rootApplication.metadata.name}
+          applicationNamespace: ${rootApplication.metadata.namespace}
+          syncStatus: ${rootApplication.status.?sync.?status.orValue("Unknown")}
+          healthStatus: ${rootApplication.status.?health.?status.orValue("Unknown")}
+      resources:
+        - id: repoServer
+          externalRef:
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: argocd-repo-server
+              namespace: argocd
+          readyWhen:
+            - ${repoServer.status.?availableReplicas.orValue(0) > 0}
+
+        - id: applicationController
+          externalRef:
+            apiVersion: apps/v1
+            kind: StatefulSet
+            metadata:
+              name: argocd-application-controller
+              namespace: argocd
+          readyWhen:
+            - ${applicationController.status.?readyReplicas.orValue(0) > 0}
+
+        - id: argocdServer
+          externalRef:
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: argocd-server
+              namespace: argocd
+          readyWhen:
+            - ${argocdServer.status.?availableReplicas.orValue(0) > 0}
+
+        - id: rootApplication
+          template:
+            apiVersion: argoproj.io/v1alpha1
+            kind: Application
+            metadata:
+              name: ${schema.spec.applicationName}
+              namespace: ${schema.spec.applicationNamespace}
+              annotations:
+                bootstrap.platform.bootstrap.io/repo-server-uid: ${repoServer.metadata.uid}
+                bootstrap.platform.bootstrap.io/controller-uid: ${applicationController.metadata.uid}
+                bootstrap.platform.bootstrap.io/server-uid: ${argocdServer.metadata.uid}
+            spec:
+              project: ${schema.spec.project}
+              source:
+                repoURL: ${schema.spec.repoURL}
+                targetRevision: ${schema.spec.targetRevision}
+                path: ${schema.spec.path}
+              destination:
+                server: ${schema.spec.destinationServer}
+                namespace: ${schema.spec.destinationNamespace}
+              syncPolicy:
+                automated:
+                  prune: true
+                  selfHeal: true
+                syncOptions:
+                  - CreateNamespace=true
+          readyWhen:
+            - ${rootApplication.status.?sync.?status.orValue("Unknown") == "Synced"}
+            - ${rootApplication.status.?health.?status.orValue("Unknown") == "Healthy"}
+  20-bootstrap.yaml: |
+    apiVersion: platform.bootstrap.io/v1alpha1
+    kind: ArgoBootstrap
+    metadata:
+      name: cluster-bootstrap
+    spec:
+      applicationName: root
+      applicationNamespace: argocd
+      repoURL: https://github.com/MJoeWatson/kro-bootstrapper.git
+      targetRevision: main
+      path: clusters/local/root
+      project: default
+      destinationServer: https://kubernetes.default.svc
+      destinationNamespace: argocd

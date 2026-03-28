@@ -1,0 +1,94 @@
+{{- if eq (include "argocd-bootstrap.shouldBootstrap" . | trim) "true" }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "argocd-bootstrap.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: post-install
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.bootstrap.job.backoffLimit }}
+  template:
+    spec:
+      serviceAccountName: {{ include "argocd-bootstrap.fullname" . }}
+      restartPolicy: OnFailure
+      volumes:
+        - name: argocd-values
+          configMap:
+            name: {{ include "argocd-bootstrap.fullname" . }}-argocd-values
+        - name: bootstrap-manifests
+          configMap:
+            name: {{ include "argocd-bootstrap.fullname" . }}-manifests
+      containers:
+        - name: bootstrap
+          image: {{ .Values.bootstrap.job.image }}
+          volumeMounts:
+            - name: argocd-values
+              mountPath: /config
+            - name: bootstrap-manifests
+              mountPath: /manifests
+          command:
+            - /bin/sh
+            - -ceu
+          args:
+            - |
+              if kubectl get configmap {{ .Values.bootstrap.sentinel.name }} -n {{ .Values.bootstrap.sentinel.namespace }} >/dev/null 2>&1; then
+                echo "Bootstrap sentinel exists; skipping"
+                exit 0
+              fi
+
+{{- if .Values.bootstrap.argocd.install }}
+              helm upgrade --install {{ .Values.bootstrap.argocd.releaseName }} {{ .Values.bootstrap.argocd.chart }} \
+                --repo {{ .Values.bootstrap.argocd.repoURL }} \
+                --namespace {{ .Values.bootstrap.argocd.namespace }} \
+                --create-namespace \
+                --version {{ .Values.bootstrap.argocd.version }} \
+                --wait \
+                --timeout {{ .Values.bootstrap.job.timeout }} \
+                --values /config/argocd-values.yaml
+{{- else }}
+              echo "Skipping Argo CD installation and waiting for an existing Argo CD deployment"
+{{- end }}
+
+              kubectl rollout status deployment/argocd-repo-server -n {{ .Values.bootstrap.argocd.namespace }} --timeout={{ .Values.bootstrap.job.timeout }}
+              kubectl rollout status deployment/argocd-server -n {{ .Values.bootstrap.argocd.namespace }} --timeout={{ .Values.bootstrap.job.timeout }}
+              kubectl rollout status statefulset/argocd-application-controller -n {{ .Values.bootstrap.argocd.namespace }} --timeout={{ .Values.bootstrap.job.timeout }}
+
+              kubectl apply -f /manifests
+
+{{- if and .Values.bootstrap.rootApplication.enabled .Values.bootstrap.rootApplication.waitForHealthy }}
+              for _ in $(seq 1 60); do
+                sync_status="$(kubectl get application {{ .Values.bootstrap.rootApplication.name }} -n {{ .Values.bootstrap.rootApplication.namespace }} -o jsonpath='{.status.sync.status}' 2>/dev/null || true)"
+                health_status="$(kubectl get application {{ .Values.bootstrap.rootApplication.name }} -n {{ .Values.bootstrap.rootApplication.namespace }} -o jsonpath='{.status.health.status}' 2>/dev/null || true)"
+                if [ "$sync_status" = "Synced" ] && [ "$health_status" = "Healthy" ]; then
+                  break
+                fi
+                sleep 5
+              done
+
+              if [ "$sync_status" != "Synced" ] || [ "$health_status" != "Healthy" ]; then
+                echo "Root application did not become Synced/Healthy"
+                kubectl get application {{ .Values.bootstrap.rootApplication.name }} -n {{ .Values.bootstrap.rootApplication.namespace }} -o yaml || true
+                exit 1
+              fi
+{{- end }}
+
+              kubectl create configmap {{ .Values.bootstrap.sentinel.name }} \
+                -n {{ .Values.bootstrap.sentinel.namespace }} \
+                --from-literal=completedAt="$(date -u +%FT%TZ)" \
+                --from-literal=release={{ .Release.Name }} \
+                --dry-run=client -o yaml | kubectl apply -f -
+
+              kubectl delete configmap {{ include "argocd-bootstrap.fullname" . }}-argocd-values \
+                -n {{ .Release.Namespace }} \
+                --ignore-not-found=true || true
+              kubectl delete configmap {{ include "argocd-bootstrap.fullname" . }}-manifests \
+                -n {{ .Release.Namespace }} \
+                --ignore-not-found=true || true
+              kubectl delete clusterrolebinding {{ include "argocd-bootstrap.fullname" . }} \
+                --ignore-not-found=true || true
+              kubectl delete serviceaccount {{ include "argocd-bootstrap.fullname" . }} \
+                -n {{ .Release.Namespace }} \
+                --ignore-not-found=true || true
+{{- end }}

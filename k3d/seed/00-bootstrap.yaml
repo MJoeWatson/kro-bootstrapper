@@ -1,0 +1,9 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: argocd-bootstrap
+  namespace: kube-system
+spec:
+  chart: https://%{KUBERNETES_API}%/static/bootstrap/argocd-bootstrap-0.1.0.tgz
+  targetNamespace: kube-system
+  bootstrap: true

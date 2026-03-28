@@ -1,0 +1,49 @@
+{{- if eq (include "argocd-bootstrap.shouldBootstrap" . | trim) "true" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "argocd-bootstrap.fullname" . }}-argocd-values
+  namespace: {{ .Release.Namespace }}
+data:
+  argocd-values.yaml: |-
+{{ .Values.bootstrap.argocd.values | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "argocd-bootstrap.fullname" . }}-manifests
+  namespace: {{ .Release.Namespace }}
+data:
+{{- if .Values.bootstrap.rootApplication.enabled }}
+  10-root-application.yaml: |-
+    apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    metadata:
+      name: {{ .Values.bootstrap.rootApplication.name }}
+      namespace: {{ .Values.bootstrap.rootApplication.namespace }}
+    spec:
+      project: {{ .Values.bootstrap.rootApplication.project }}
+      source:
+        repoURL: {{ .Values.bootstrap.rootApplication.repoURL }}
+        targetRevision: {{ .Values.bootstrap.rootApplication.targetRevision }}
+        path: {{ .Values.bootstrap.rootApplication.path }}
+      destination:
+        server: {{ .Values.bootstrap.rootApplication.destinationServer }}
+        namespace: {{ .Values.bootstrap.rootApplication.destinationNamespace }}
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+{{- end }}
+{{- if .Values.bootstrap.additionalObjects }}
+  20-additional-objects.yaml: |-
+{{- range $index, $object := .Values.bootstrap.additionalObjects }}
+{{- if gt $index 0 }}
+    ---
+{{- end }}
+{{ toYaml $object | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

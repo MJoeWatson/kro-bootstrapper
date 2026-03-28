@@ -1,53 +1,79 @@
 # Argo CD Bootstrapper
 
-This repository bootstraps Argo CD through a thin seed layer and uses `kro` to order the first Argo resources correctly.
+This repository bootstraps Argo CD through one reusable Helm chart.
 
 The current flow is:
 
-1. K3s auto-deploys one Argo CD `HelmChart`
-2. K3s auto-deploys one seed `Job`
-3. The seed job installs `kro` and waits for the required CRDs
-4. The seed job applies a `kro` `ResourceGraphDefinition` and one `ArgoBootstrap` resource
-5. `kro` waits for Argo CD readiness and only then creates the initial `root` `Application`
-6. That root `Application` syncs the repository app tree
+1. an external tool installs one bootstrap chart
+2. the bootstrap chart runs a one-shot `post-install` job
+3. that job either installs Argo CD from inside the cluster or waits for an existing Argo CD installation
+4. the job waits for Argo CD readiness
+5. the job applies bootstrap Argo CD resources such as the root `Application`
+6. the job writes a sentinel `ConfigMap` so bootstrap is not rerun accidentally
+7. Argo CD takes over steady-state ownership from Git
 
 ## Repository Layout
 
+- `charts/argocd-bootstrap/`
+  The reusable bootstrap chart that installs Argo CD once and then hands control to Argo CD itself.
 - `k3d/`
-  Local-only helpers for automatically seeding a `k3d` cluster through the K3s manifests directory.
+  Local-only helpers for automatically seeding a `k3d` cluster through the K3s manifests directory and static file server.
 - `clusters/local/root/`
   The initial app-of-apps tree that bootstrap creates.
 - `clusters/local/platform-root/`
   A placeholder steady-state platform root.
 
+## Standard Install
+
+For a normal cluster, install the bootstrap chart and let it perform the day-0 setup:
+
+```bash
+helm upgrade --install argocd-bootstrap ./charts/argocd-bootstrap -n kube-system
+```
+
+That chart is the only thing an external tool needs to own.
+
+If the cluster already provides Argo CD, disable the install step and keep only the wait/apply logic:
+
+```bash
+helm upgrade --install argocd-bootstrap ./charts/argocd-bootstrap \
+  -n kube-system \
+  --set bootstrap.argocd.install=false
+```
+
 ## k3d Local Flow
 
-For local testing, mount [k3d/seed](/Users/mwatson/Documents/projects/personal/k8skro/repo/k3d/seed) into `/var/lib/rancher/k3s/server/manifests`.
+For local testing, mount [k3d/seed](/Users/mwatson/Documents/projects/personal/k8skro/repo/k3d/seed) into `/var/lib/rancher/k3s/server/manifests` and [k3d/static/bootstrap](/Users/mwatson/Documents/projects/personal/k8skro/repo/k3d/static/bootstrap) into `/var/lib/rancher/k3s/server/static/bootstrap`.
 
-The local seed is intentionally small:
+The local seed is intentionally tiny:
 
-1. install Argo CD through a K3s `HelmChart`
-2. run one seed job that installs `kro` and applies the bootstrap artifacts
-3. let `kro` create the initial `root` `Application` only after Argo CD is actually ready
-4. let Argo CD sync [clusters/local/root/platform-root.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/platform-root.yaml)
+1. K3s auto-deploys one `HelmChart` custom resource
+2. that `HelmChart` installs the packaged bootstrap chart from the local K3s static server
+3. the bootstrap chart job installs Argo CD and applies the bootstrap manifests
+4. Argo CD syncs [clusters/local/root/platform-root.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/platform-root.yaml)
 
 Example:
 
 ```bash
+mkdir -p k3d/static/bootstrap
+helm package charts/argocd-bootstrap -d k3d/static/bootstrap
 k3d cluster create --config k3d/local-cluster.yaml
 kubectl get applications -n argocd
 ```
 
 ## Notes
 
-- The local seed consists of [00-argocd.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/k3d/seed/00-argocd.yaml), [01-bootstrap-seed-rbac.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/k3d/seed/01-bootstrap-seed-rbac.yaml), [02-bootstrap-artifacts.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/k3d/seed/02-bootstrap-artifacts.yaml), and [03-bootstrap-seed-job.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/k3d/seed/03-bootstrap-seed-job.yaml).
-- The imperative edge is intentionally tiny: the seed job only installs `kro` and applies the bootstrap RGD/instance after the Argo CD and `kro` APIs exist.
-- The real ordering logic lives in `kro`, not in the seed script.
+- The bootstrap job is a Helm hook, not a permanent controller.
+- The completion sentinel is `ConfigMap/argocd-bootstrap-complete` in `kube-system`.
+- The job removes its temporary bootstrap ConfigMaps and elevated `ClusterRoleBinding` after a successful run.
+- The chart is designed so an external tool owns only the bootstrap mechanism, not the Argo CD release after handoff.
+- The main external sources are configurable through values:
+  `bootstrap.job.image`, `bootstrap.argocd.repoURL`, `bootstrap.argocd.chart`, `bootstrap.argocd.version`, and `bootstrap.rootApplication.repoURL`.
 - The current app tree only installs `platform-root`. If you want Argo CD to manage itself later, add a dedicated Argo app to [clusters/local/root](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root) and retire the bootstrap `HelmChart` explicitly.
 
 ## Decision Record
 
-- The direct Argo-only bootstrap path was evaluated, including a Helm `post-install` hook for the root `Application`.
-- That prototype still hit a startup race where the root application reconciled before `argocd-repo-server` was reliably ready.
-- The current direction is therefore to use `kro` for bootstrap ordering and keep the imperative seed layer minimal.
-- See [ADR 0001](/Users/mwatson/Documents/projects/personal/k8skro/repo/docs/decisions/0001-use-kro-for-bootstrap-ordering.md).
+- Direct Argo-only bootstrap was evaluated first and still hit a startup race around `argocd-repo-server`.
+- `kro` was then evaluated for ordering, but was more machinery than this bootstrap problem needed.
+- The chosen direction is a bootstrap chart with one one-shot job and a completion sentinel.
+- See [ADR 0002](/Users/mwatson/Documents/projects/personal/k8skro/repo/docs/decisions/0002-use-bootstrap-chart-for-argocd.md).

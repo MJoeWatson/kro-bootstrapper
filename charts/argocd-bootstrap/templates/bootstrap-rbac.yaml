@@ -1,0 +1,20 @@
+{{- if eq (include "argocd-bootstrap.shouldBootstrap" . | trim) "true" }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "argocd-bootstrap.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "argocd-bootstrap.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "argocd-bootstrap.fullname" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+{{- end }}

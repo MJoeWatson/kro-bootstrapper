@@ -1,0 +1,39 @@
+bootstrap:
+  job:
+    image: ghcr.io/dtzar/helm-kubectl:3.18.3
+    backoffLimit: 4
+    timeout: 10m
+
+  sentinel:
+    name: argocd-bootstrap-complete
+    namespace: kube-system
+
+  argocd:
+    install: true
+    releaseName: argocd
+    namespace: argocd
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-cd
+    version: 9.2.4
+    values: |
+      crds:
+        install: true
+      global:
+        domain: argocd.localtest.me
+      configs:
+        params:
+          server.insecure: true
+
+  rootApplication:
+    enabled: true
+    waitForHealthy: true
+    name: root
+    namespace: argocd
+    project: default
+    repoURL: https://github.com/MJoeWatson/kro-bootstrapper.git
+    targetRevision: main
+    path: clusters/local/root
+    destinationServer: https://kubernetes.default.svc
+    destinationNamespace: argocd
+
+  additionalObjects: []

@@ -8,3 +8,6 @@ volumes:
   - volume: /Users/mwatson/Documents/projects/personal/k8skro/repo/k3d/seed:/var/lib/rancher/k3s/server/manifests/bootstrap
     nodeFilters:
       - server:*
+  - volume: /Users/mwatson/Documents/projects/personal/k8skro/repo/k3d/static/bootstrap:/var/lib/rancher/k3s/server/static/bootstrap
+    nodeFilters:
+      - server:*

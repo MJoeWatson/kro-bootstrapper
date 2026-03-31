@@ -1,0 +1,10 @@
+{{- if eq (include "argocd-bootstrap.shouldBootstrap" . | trim) "true" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "argocd-bootstrap.fullname" . }}-argocd-values
+  namespace: {{ .Release.Namespace }}
+data:
+  argocd-values.yaml: |-
+{{ .Values.bootstrap.argocd.values | nindent 4 }}
+{{- end }}

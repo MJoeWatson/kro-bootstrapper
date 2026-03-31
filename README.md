@@ -7,11 +7,12 @@ The current flow is:
 1. an external tool installs one bootstrap chart
 2. the bootstrap chart runs a one-shot `post-install` job
 3. that job either installs Argo CD from inside the cluster or waits for an existing Argo CD installation
-4. the job waits for Argo CD readiness
-5. the job optionally installs External Secrets Operator and, for local `k3d`, can emulate an external secret source
-6. the job applies bootstrap Argo CD resources such as the root `Application`
-7. the job writes a sentinel `ConfigMap` so bootstrap is not rerun accidentally
+4. the job waits for the Argo CD CRDs to become established
+5. the job waits for Argo CD readiness
+6. the job optionally installs External Secrets Operator and, for local `k3d`, can emulate an external secret source
+7. the job applies bootstrap Argo CD resources such as the root `Application`
 8. Argo CD takes over steady-state ownership from Git
+9. the job writes a sentinel `ConfigMap` so bootstrap is not rerun accidentally
 
 ## Repository Layout
 
@@ -42,6 +43,8 @@ helm upgrade --install argocd-bootstrap ./charts/argocd-bootstrap \
   --set bootstrap.argocd.install=false
 ```
 
+In that mode, bootstrap expects the existing Argo CD installation to have already provisioned the CRDs and waits for those APIs before creating the root `Application`.
+
 If the external platform also makes the standard Argo rollout checks irrelevant, disable or override them:
 
 ```bash
@@ -69,7 +72,7 @@ The local seed is intentionally tiny:
 
 1. K3s auto-deploys one `HelmChart` custom resource
 2. that `HelmChart` installs the packaged bootstrap chart from the local K3s static server
-3. the bootstrap chart job installs Argo CD, installs External Secrets Operator, and creates a local test secret path for `argocd-sso-secret`
+3. the bootstrap chart job installs Argo CD, waits for the Argo CD CRDs and controllers, installs External Secrets Operator, and creates a local test secret path for `argocd-sso-secret`
 4. Argo CD syncs [clusters/local/root/external-secrets.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/external-secrets.yaml), [clusters/local/root/argocd.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/argocd.yaml), and [clusters/local/root/platform-root.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/platform-root.yaml)
 
 Example:
@@ -87,6 +90,8 @@ kubectl get applications -n argocd
 - The completion sentinel is `ConfigMap/argocd-bootstrap-complete` in `kube-system`.
 - The job removes its temporary bootstrap ConfigMaps and elevated `ClusterRoleBinding` after a successful run.
 - The chart is designed so an external tool owns only the bootstrap mechanism, not the Argo CD release after handoff.
+- The bootstrap step installs Argo CD with `crds.install=true`, then explicitly waits for `applications.argoproj.io`, `appprojects.argoproj.io`, and `applicationsets.argoproj.io` to become `Established` before applying the root app.
+- The Git-managed [argocd.yaml](/Users/mwatson/Documents/projects/personal/k8skro/repo/clusters/local/root/argocd.yaml) app keeps `crds.install=true` and `skipCrds=false`, so Argo CD continues reconciling those CRDs after bootstrap.
 - The main external sources are configurable through values:
   `bootstrap.job.image`, `bootstrap.argocd.repoURL`, `bootstrap.argocd.chart`, `bootstrap.argocd.version`, and `bootstrap.rootApplication.repoURL`.
 - External Secrets Operator is bootstrap-installable through `bootstrap.externalSecrets.*`.

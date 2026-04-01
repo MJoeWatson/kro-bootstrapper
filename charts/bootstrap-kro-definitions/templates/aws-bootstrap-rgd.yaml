@@ -62,7 +62,6 @@ spec:
           annotations:
             bootstrap.k8skro.dev/root-application: ${rootApplication.metadata.name}
         data:
-          completedAt: ${string(rootApplication.metadata.creationTimestamp)}
           release: ${rootApplication.metadata.name}
           rootHealthStatus: ${rootApplication.status.health.status}
           rootSyncStatus: ${rootApplication.status.sync.status}

@@ -1,0 +1,86 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bootstrap-core.fullname" . }}-runtime
+  namespace: {{ .Release.Namespace }}
+data:
+  common.sh: |-
+    BOOTSTRAP_TIMEOUT="{{ .Values.bootstrap.job.timeout }}"
+    COMPLETION_NAME="{{ .Values.bootstrap.completion.name }}"
+    COMPLETION_NAMESPACE="{{ .Values.bootstrap.completion.namespace }}"
+    RELEASE_NAME="{{ .Release.Name }}"
+
+    completion_exists() {
+      kubectl get configmap "$COMPLETION_NAME" -n "$COMPLETION_NAMESPACE" >/dev/null 2>&1
+    }
+
+    write_completion() {
+      kubectl create configmap "$COMPLETION_NAME" \
+        -n "$COMPLETION_NAMESPACE" \
+        --from-literal=completedAt="$(date -u +%FT%TZ)" \
+        --from-literal=release="$RELEASE_NAME" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    }
+
+    install_chart() {
+      release_name="$1"
+      chart_name="$2"
+      repo_url="$3"
+      namespace="$4"
+      version="$5"
+      values_file="$6"
+
+      if [ -n "$repo_url" ]; then
+        helm upgrade --install "$release_name" "$chart_name" \
+          --repo "$repo_url" \
+          --namespace "$namespace" \
+          --create-namespace \
+          --version "$version" \
+          --wait \
+          --timeout "$BOOTSTRAP_TIMEOUT" \
+          --values "$values_file"
+      else
+        helm upgrade --install "$release_name" "$chart_name" \
+          --namespace "$namespace" \
+          --create-namespace \
+          --version "$version" \
+          --wait \
+          --timeout "$BOOTSTRAP_TIMEOUT" \
+          --values "$values_file"
+      fi
+    }
+
+    wait_for_crd() {
+      crd_name="$1"
+
+      kubectl wait --for=condition=Established "crd/$crd_name" --timeout="$BOOTSTRAP_TIMEOUT"
+    }
+
+    wait_for_rollout() {
+      target="$1"
+      namespace="$2"
+
+      kubectl rollout status "$target" -n "$namespace" --timeout="$BOOTSTRAP_TIMEOUT"
+    }
+  step-install-and-wait.sh: |-
+    if completion_exists; then
+      echo "Core bootstrap completion marker exists; skipping"
+      exit 0
+    fi
+
+{{- range $index, $chart := .Values.bootstrap.charts }}
+    echo "Installing {{ $chart.name }}"
+    install_chart {{ $chart.releaseName | quote }} {{ $chart.chart | quote }} {{ $chart.repoURL | quote }} {{ $chart.namespace | quote }} {{ $chart.version | quote }} /runtime/chart-{{ $index }}-values.yaml
+{{- range $crd := $chart.wait.crds }}
+    wait_for_crd {{ $crd | quote }}
+{{- end }}
+{{- range $target := $chart.wait.rollouts }}
+    wait_for_rollout {{ $target | quote }} {{ $chart.namespace | quote }}
+{{- end }}
+
+{{- end }}
+    write_completion
+{{- range $index, $chart := .Values.bootstrap.charts }}
+  chart-{{ $index }}-values.yaml: |-
+{{ $chart.values | nindent 4 }}
+{{- end }}

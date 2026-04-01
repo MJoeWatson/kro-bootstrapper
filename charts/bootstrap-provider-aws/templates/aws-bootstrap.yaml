@@ -1,0 +1,19 @@
+apiVersion: bootstrap.k8skro.dev/v1alpha1
+kind: AwsBootstrap
+metadata:
+  name: {{ include "bootstrap-provider-aws.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  argocdNamespace: {{ .Values.bootstrap.argocdNamespace | quote }}
+  completion:
+    name: {{ .Values.bootstrap.completion.name | quote }}
+    namespace: {{ .Values.bootstrap.completion.namespace | quote }}
+  rootApplication:
+    name: {{ .Values.bootstrap.rootApplication.name | quote }}
+    namespace: {{ .Values.bootstrap.rootApplication.namespace | quote }}
+    project: {{ .Values.bootstrap.rootApplication.project | quote }}
+    repoURL: {{ required "bootstrap.rootApplication.repoURL is required" .Values.bootstrap.rootApplication.repoURL | quote }}
+    targetRevision: {{ required "bootstrap.rootApplication.targetRevision is required" .Values.bootstrap.rootApplication.targetRevision | quote }}
+    path: {{ required "bootstrap.rootApplication.path is required" .Values.bootstrap.rootApplication.path | quote }}
+    destinationServer: {{ .Values.bootstrap.rootApplication.destinationServer | quote }}
+    destinationNamespace: {{ .Values.bootstrap.rootApplication.destinationNamespace | quote }}

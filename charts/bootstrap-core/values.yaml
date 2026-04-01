@@ -1,0 +1,55 @@
+bootstrap:
+  job:
+    image: ghcr.io/dtzar/helm-kubectl:3.18.3
+    backoffLimit: 4
+    timeout: 10m
+
+  completion:
+    name: bootstrap-core-complete
+    namespace: kube-system
+
+  charts:
+    - name: argocd
+      releaseName: argocd
+      namespace: argocd
+      repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-cd
+      version: 9.2.4
+      values: "{}"
+      wait:
+        crds:
+          - applications.argoproj.io
+          - appprojects.argoproj.io
+          - applicationsets.argoproj.io
+        rollouts:
+          - deployment/argocd-repo-server
+          - deployment/argocd-server
+          - statefulset/argocd-application-controller
+    - name: external-secrets
+      releaseName: external-secrets
+      namespace: external-secrets
+      repoURL: https://charts.external-secrets.io
+      chart: external-secrets
+      version: 1.3.1
+      values: "{}"
+      wait:
+        crds:
+          - externalsecrets.external-secrets.io
+          - secretstores.external-secrets.io
+          - clustersecretstores.external-secrets.io
+        rollouts:
+          - deployment/external-secrets
+          - deployment/external-secrets-webhook
+          - deployment/external-secrets-cert-controller
+    - name: kro
+      releaseName: kro
+      namespace: kro-system
+      repoURL: ""
+      chart: oci://registry.k8s.io/kro/charts/kro
+      version: 0.8.5
+      values: "{}"
+      wait:
+        crds:
+          - resourcegraphdefinitions.kro.run
+        rollouts:
+          - deployment/kro

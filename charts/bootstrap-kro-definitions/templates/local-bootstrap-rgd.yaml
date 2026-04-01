@@ -1,0 +1,157 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: local-bootstrap
+spec:
+  schema:
+    apiVersion: v1alpha1
+    group: bootstrap.k8skro.dev
+    kind: LocalBootstrap
+    spec:
+      argocdNamespace: string | default="argocd"
+      completion:
+        name: string | default="bootstrap-complete"
+        namespace: string | default="kube-system"
+      local:
+        remoteServerURL: string
+        remoteCABundle: string
+        esoTokenSecretName: string | default="eso-token"
+        remoteNamespace: string | default="bootstrap-secrets"
+        ssoSourceSecretName: string | default="argocd-local-sso-source"
+        repoSourceSecretName: string | default="argocd-local-repo-source"
+        repositoryURL: string
+      rootApplication:
+        name: string | default="root"
+        namespace: string | default="argocd"
+        project: string | default="default"
+        repoURL: string
+        targetRevision: string
+        path: string
+        destinationServer: string | default="https://kubernetes.default.svc"
+        destinationNamespace: string | default="argocd"
+    status:
+      completionConfigMap: ${completionConfigMap.metadata.name}
+      repoSecretName: ${repoAccessExternalSecret.spec.target.name}
+      rootApplicationName: ${rootApplication.metadata.name}
+      rootHealthStatus: ${rootApplication.status.health.status}
+      rootSyncStatus: ${rootApplication.status.sync.status}
+  resources:
+    - id: secretStore
+      template:
+        apiVersion: external-secrets.io/v1
+        kind: SecretStore
+        metadata:
+          name: kubernetes-local-secrets
+          namespace: ${schema.spec.argocdNamespace}
+        spec:
+          provider:
+            kubernetes:
+              remoteNamespace: ${schema.spec.local.remoteNamespace}
+              server:
+                url: ${schema.spec.local.remoteServerURL}
+                caBundle: ${base64.decode(schema.spec.local.remoteCABundle)}
+              auth:
+                token:
+                  bearerToken:
+                    name: ${schema.spec.local.esoTokenSecretName}
+                    key: token
+    - id: ssoExternalSecret
+      template:
+        apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        metadata:
+          name: argocd-sso-secret
+          namespace: ${schema.spec.argocdNamespace}
+        spec:
+          refreshInterval: 1h
+          secretStoreRef:
+            kind: SecretStore
+            name: ${secretStore.metadata.name}
+          target:
+            name: argocd-sso-secret
+            creationPolicy: Owner
+          data:
+            - secretKey: clientSecret
+              remoteRef:
+                key: ${schema.spec.local.ssoSourceSecretName}
+                property: clientSecret
+      readyWhen:
+        - ${ssoExternalSecret.status.conditions.exists(c, c.type == "Ready" && c.status == "True")}
+    - id: repoAccessExternalSecret
+      template:
+        apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        metadata:
+          name: local-private-repo
+          namespace: ${schema.spec.argocdNamespace}
+        spec:
+          refreshInterval: 1h
+          secretStoreRef:
+            kind: SecretStore
+            name: ${secretStore.metadata.name}
+          target:
+            name: local-private-repo
+            creationPolicy: Owner
+            template:
+              metadata:
+                labels:
+                  argocd.argoproj.io/secret-type: repository
+              data:
+                type: git
+                url: ${schema.spec.local.repositoryURL}
+                username: {{ "{{ .username }}" | quote }}
+                password: {{ "{{ .password }}" | quote }}
+                forceHttpBasicAuth: "true"
+          data:
+            - secretKey: username
+              remoteRef:
+                key: ${schema.spec.local.repoSourceSecretName}
+                property: username
+            - secretKey: password
+              remoteRef:
+                key: ${schema.spec.local.repoSourceSecretName}
+                property: password
+      readyWhen:
+        - ${repoAccessExternalSecret.status.conditions.exists(c, c.type == "Ready" && c.status == "True")}
+    - id: rootApplication
+      template:
+        apiVersion: argoproj.io/v1alpha1
+        kind: Application
+        metadata:
+          name: ${schema.spec.rootApplication.name}
+          namespace: ${schema.spec.rootApplication.namespace}
+          annotations:
+            bootstrap.k8skro.dev/repo-access: ${repoAccessExternalSecret.metadata.name}
+            bootstrap.k8skro.dev/sso-secret: ${ssoExternalSecret.metadata.name}
+        spec:
+          project: ${schema.spec.rootApplication.project}
+          source:
+            repoURL: ${schema.spec.rootApplication.repoURL}
+            targetRevision: ${schema.spec.rootApplication.targetRevision}
+            path: ${schema.spec.rootApplication.path}
+          destination:
+            server: ${schema.spec.rootApplication.destinationServer}
+            namespace: ${schema.spec.rootApplication.destinationNamespace}
+          syncPolicy:
+            automated:
+              prune: true
+              selfHeal: true
+            syncOptions:
+              - CreateNamespace=true
+      readyWhen:
+        - ${rootApplication.status.sync.status == "Synced"}
+        - ${rootApplication.status.health.status == "Healthy"}
+    - id: completionConfigMap
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: ${schema.spec.completion.name}
+          namespace: ${schema.spec.completion.namespace}
+          annotations:
+            bootstrap.k8skro.dev/root-application: ${rootApplication.metadata.name}
+        data:
+          completedAt: ${string(rootApplication.metadata.creationTimestamp)}
+          release: ${rootApplication.metadata.name}
+          rootHealthStatus: ${rootApplication.status.health.status}
+          rootSyncStatus: ${rootApplication.status.sync.status}

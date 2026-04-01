@@ -1,0 +1,16 @@
+bootstrap:
+  argocdNamespace: argocd
+
+  completion:
+    name: bootstrap-complete
+    namespace: kube-system
+
+  rootApplication:
+    name: root
+    namespace: argocd
+    project: default
+    repoURL: ""
+    targetRevision: ""
+    path: ""
+    destinationServer: https://kubernetes.default.svc
+    destinationNamespace: argocd

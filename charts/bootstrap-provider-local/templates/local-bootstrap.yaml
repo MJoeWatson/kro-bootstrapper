@@ -1,0 +1,27 @@
+apiVersion: bootstrap.k8skro.dev/v1alpha1
+kind: LocalBootstrap
+metadata:
+  name: {{ include "bootstrap-provider-local.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  argocdNamespace: {{ .Values.bootstrap.argocdNamespace | quote }}
+  completion:
+    name: {{ .Values.bootstrap.completion.name | quote }}
+    namespace: {{ .Values.bootstrap.completion.namespace | quote }}
+  local:
+    remoteServerURL: {{ required "bootstrap.local.remoteServerURL is required" .Values.bootstrap.local.remoteServerURL | quote }}
+    remoteCABundle: {{ required "bootstrap.local.remoteCABundle is required" .Values.bootstrap.local.remoteCABundle | quote }}
+    esoTokenSecretName: {{ include "bootstrap-provider-local.esoTokenSecretName" . | quote }}
+    remoteNamespace: {{ .Values.bootstrap.local.remoteNamespace | quote }}
+    ssoSourceSecretName: {{ .Values.bootstrap.local.ssoSourceSecretName | quote }}
+    repoSourceSecretName: {{ .Values.bootstrap.local.repoSourceSecretName | quote }}
+    repositoryURL: {{ required "bootstrap.local.repositoryURL is required" .Values.bootstrap.local.repositoryURL | quote }}
+  rootApplication:
+    name: {{ .Values.bootstrap.rootApplication.name | quote }}
+    namespace: {{ .Values.bootstrap.rootApplication.namespace | quote }}
+    project: {{ .Values.bootstrap.rootApplication.project | quote }}
+    repoURL: {{ required "bootstrap.rootApplication.repoURL is required" .Values.bootstrap.rootApplication.repoURL | quote }}
+    targetRevision: {{ required "bootstrap.rootApplication.targetRevision is required" .Values.bootstrap.rootApplication.targetRevision | quote }}
+    path: {{ required "bootstrap.rootApplication.path is required" .Values.bootstrap.rootApplication.path | quote }}
+    destinationServer: {{ .Values.bootstrap.rootApplication.destinationServer | quote }}
+    destinationNamespace: {{ .Values.bootstrap.rootApplication.destinationNamespace | quote }}

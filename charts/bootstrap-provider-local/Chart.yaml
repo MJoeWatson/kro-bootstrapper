@@ -1,0 +1,6 @@
+apiVersion: v2
+name: bootstrap-provider-local
+description: Local bootstrap provider chart for ESO-backed repo access and root-app handoff.
+type: application
+version: 0.1.0
+appVersion: 0.1.0

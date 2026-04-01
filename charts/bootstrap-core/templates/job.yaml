@@ -1,0 +1,31 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "bootstrap-core.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.bootstrap.job.backoffLimit }}
+  template:
+    spec:
+      serviceAccountName: {{ include "bootstrap-core.fullname" . }}
+      restartPolicy: OnFailure
+      volumes:
+        - name: bootstrap-runtime
+          configMap:
+            name: {{ include "bootstrap-core.fullname" . }}-runtime
+      containers:
+        - name: bootstrap
+          image: {{ .Values.bootstrap.job.image }}
+          command:
+            - /bin/sh
+            - -eu
+            - -c
+            - |
+              . /runtime/common.sh
+              . /runtime/step-install-and-wait.sh
+          volumeMounts:
+            - name: bootstrap-runtime
+              mountPath: /runtime

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: bootstrap-kro-definitions
+description: ResourceGraphDefinitions that define the bootstrap provider APIs.
+type: application
+version: 0.1.0
+appVersion: 0.1.0

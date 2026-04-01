@@ -1,0 +1,25 @@
+bootstrap:
+  argocdNamespace: argocd
+
+  completion:
+    name: bootstrap-complete
+    namespace: kube-system
+
+  local:
+    remoteServerURL: ""
+    remoteCABundle: ""
+    remoteBearerToken: ""
+    remoteNamespace: bootstrap-secrets
+    ssoSourceSecretName: argocd-local-sso-source
+    repoSourceSecretName: argocd-local-repo-source
+    repositoryURL: ""
+
+  rootApplication:
+    name: root
+    namespace: argocd
+    project: default
+    repoURL: https://github.com/MJoeWatson/kro-bootstrapper.git
+    targetRevision: main
+    path: argocd-apps/local/argocd-bootstrapper/root
+    destinationServer: https://kubernetes.default.svc
+    destinationNamespace: argocd

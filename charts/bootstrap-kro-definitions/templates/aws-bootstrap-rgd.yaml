@@ -1,0 +1,68 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: aws-bootstrap
+spec:
+  schema:
+    apiVersion: v1alpha1
+    group: bootstrap.k8skro.dev
+    kind: AwsBootstrap
+    spec:
+      argocdNamespace: string | default="argocd"
+      completion:
+        name: string | default="bootstrap-complete"
+        namespace: string | default="kube-system"
+      rootApplication:
+        name: string | default="root"
+        namespace: string | default="argocd"
+        project: string | default="default"
+        repoURL: string
+        targetRevision: string
+        path: string
+        destinationServer: string | default="https://kubernetes.default.svc"
+        destinationNamespace: string | default="argocd"
+    status:
+      completionConfigMap: ${completionConfigMap.metadata.name}
+      rootApplicationName: ${rootApplication.metadata.name}
+      rootHealthStatus: ${rootApplication.status.health.status}
+      rootSyncStatus: ${rootApplication.status.sync.status}
+  resources:
+    - id: rootApplication
+      template:
+        apiVersion: argoproj.io/v1alpha1
+        kind: Application
+        metadata:
+          name: ${schema.spec.rootApplication.name}
+          namespace: ${schema.spec.rootApplication.namespace}
+        spec:
+          project: ${schema.spec.rootApplication.project}
+          source:
+            repoURL: ${schema.spec.rootApplication.repoURL}
+            targetRevision: ${schema.spec.rootApplication.targetRevision}
+            path: ${schema.spec.rootApplication.path}
+          destination:
+            server: ${schema.spec.rootApplication.destinationServer}
+            namespace: ${schema.spec.rootApplication.destinationNamespace}
+          syncPolicy:
+            automated:
+              prune: true
+              selfHeal: true
+            syncOptions:
+              - CreateNamespace=true
+      readyWhen:
+        - ${rootApplication.status.sync.status == "Synced"}
+        - ${rootApplication.status.health.status == "Healthy"}
+    - id: completionConfigMap
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: ${schema.spec.completion.name}
+          namespace: ${schema.spec.completion.namespace}
+          annotations:
+            bootstrap.k8skro.dev/root-application: ${rootApplication.metadata.name}
+        data:
+          completedAt: ${string(rootApplication.metadata.creationTimestamp)}
+          release: ${rootApplication.metadata.name}
+          rootHealthStatus: ${rootApplication.status.health.status}
+          rootSyncStatus: ${rootApplication.status.sync.status}

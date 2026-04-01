@@ -1,17 +1,19 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: platform-root
+  name: kro
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-15"
 spec:
   project: default
   source:
-    repoURL: https://github.com/MJoeWatson/kro-bootstrapper.git
-    targetRevision: main
-    path: clusters/local/platform-root
+    repoURL: registry.k8s.io/kro/charts
+    chart: kro
+    targetRevision: 0.8.5
   destination:
     server: https://kubernetes.default.svc
-    namespace: platform-system
+    namespace: kro-system
   syncPolicy:
     automated:
       prune: true

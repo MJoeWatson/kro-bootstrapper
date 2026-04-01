@@ -1,6 +1,0 @@
-apiVersion: v2
-name: argocd-bootstrap
-description: Bootstrap Argo CD once, then let Argo CD manage itself and the platform.
-type: application
-version: 0.1.0
-appVersion: 0.1.0

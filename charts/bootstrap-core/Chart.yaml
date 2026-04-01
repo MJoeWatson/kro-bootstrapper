@@ -1,0 +1,6 @@
+apiVersion: v2
+name: bootstrap-core
+description: Shared bootstrap chart that installs common controllers and waits for them to become ready.
+type: application
+version: 0.1.0
+appVersion: 0.1.0

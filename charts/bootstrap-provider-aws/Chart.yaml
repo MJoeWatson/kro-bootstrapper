@@ -1,0 +1,6 @@
+apiVersion: v2
+name: bootstrap-provider-aws
+description: AWS bootstrap provider chart for provider-specific prereqs and root-app handoff.
+type: application
+version: 0.1.0
+appVersion: 0.1.0
